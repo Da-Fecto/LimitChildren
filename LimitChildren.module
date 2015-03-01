@@ -1,0 +1,143 @@
+<?php
+
+/**
+ * ProcessWire 'Limit Children' module
+ *
+ * Specify the amount of children a parent can have.
+ *
+ * ©2015 Martijn Geerts
+ *
+ * ProcessWire 2.x
+ * Copyright (C) 2010 by Ryan Cramer
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ *
+ * http://www.processwire.com
+ * http://www.ryancramer.com
+ *
+ */
+
+class LimitChildren extends WireData implements Module, ConfigurableModule {
+
+
+
+    /**
+     * getModuleInfo is a module required by all modules to tell ProcessWire about them
+     *
+     * @return array
+     *
+     */
+    public static function getModuleInfo() {
+
+        return array(
+            'title' => 'Limit Children',
+            'version' => 1,
+            'summary' => __('Specify the amount of children a parent can have.', __FILE__),
+            'href' => 'http://processwire.com',
+            'singular' => true,
+            'autoload' => true,
+            'icon' => 'plus-circle',
+            );
+    }
+
+
+
+    /**
+     * Setting Defaults
+     *
+     */
+    static protected $defaultSettings = array(
+        'settings' => '',
+    );
+
+
+
+    /**
+     * Associative array, the key is Page id, path or the template name. The
+     * value is the amount of allowed children.
+     *
+     */
+    protected $array = null;
+
+
+
+    /**
+     * Add the age::addable (children) Hook
+     *
+     */
+    public function init() {
+        if (!trim($this->settings)) return;
+        $this->addHookAfter('Page::addable', $this, 'afterPageAddable');
+    }
+
+
+
+    /**
+     * Build the associative array $this->array
+     *
+     */
+    public function ready() {
+
+        // Only proceed when there are settings
+        if (!trim($this->settings)) return;
+
+        $this->array = array();
+
+        $values = array_filter(array_map(function($value) {
+            $value = preg_replace('/\s+/', ' ', trim($value));
+            return strpos($value, ' ') ? $value : null;
+        }, explode("\n", $this->settings)));
+
+        foreach ($values as $value) {
+            $array = explode(' ', $value);
+            if (ctype_digit($array[1])) {
+                $this->array[$array[0]] = (int) $array[1];
+            }
+        }
+    }
+
+
+
+    public function afterPageAddable($event) {
+
+        if(!$event->return) return;
+
+        $page = $event->object;
+        $assoc = $this->array;
+
+        if (!count($assoc)) return;
+
+        if (isset($assoc[$page->id])) {
+            $int = $assoc[$page->id];
+        } else if (isset($assoc[$page->path])) {
+            $int = $assoc[$page->path];
+        } else if (isset($assoc[$page->template->name])) {
+            $int = $assoc[$page->template->name];
+        } else {
+            $int = null;
+        }
+
+        if ($int !== null && $page->numChildren() + 1 > $int ) {
+            $event->return = false;
+        } else {
+            if($event->return) return;
+        }
+
+    }
+
+
+
+    static public function getModuleConfigInputfields(array $data) {
+
+        $fields = new InputfieldWrapper();
+        $data = array_merge(self::$defaultSettings, $data);
+
+        $f = wire('modules')->get('InputfieldTextarea');
+        $f->attr('name', 'settings');
+        $f->label = __('Parent and amount of children', __FILE__);
+        $f->description = __('Type a parent id, a parent path or a parent template followed by a space and the amount of children it may have.', __FILE__);
+        $f->attr('value', $data['settings']);
+        $fields->add($f);
+
+        return $fields;
+    }
+}
